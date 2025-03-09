@@ -18,6 +18,74 @@ from utils.audio.convert_audio import bytes_to_wav
 
 queue_lock = Lock()
 
+def audio_face_queue_worker_realtime_v2(audio_face_queue, events_queue, realtime_config, py_face, socket_connection, default_animation_thread):
+    """
+    Streams (audio_bytes, facial_data) pairs in real-time.
+    - Uses a separate thread to log timing data.
+    """
+    accumulated_audio = bytearray()
+    accumulated_facial_data = []
+    encoded_facial_data = []
+    stop_worker = Event()
+    start_event = Event()
+
+    log_queue = Queue()  # Separate queue for logging
+    log_thread = Thread(target=log_timing_worker, args=(log_queue,), daemon=True)
+    log_thread.start()
+
+    playback_thread = Thread(
+        target=playback_loop,
+        args=(
+            stop_worker,
+            start_event,
+            accumulated_audio,
+            encoded_facial_data,
+            audio_face_queue,
+            py_face,
+            socket_connection,
+            default_animation_thread,
+            log_queue,  # Pass the log queue
+        ),
+        daemon=True
+    )
+    playback_thread.start()
+
+    # Process each item in the queue.
+    while True:
+        item = audio_face_queue.get()
+        if item is None:
+            audio_face_queue.task_done()
+            break
+
+        received_time = time.time()  # Timestamp when data is received
+
+        audio_bytes, facial_data = item
+        audio_face_queue.task_done()
+
+        # Changed: Determine if this is the only entry by checking if the queue is empty.
+        single_entry = audio_face_queue.empty()
+        accumulate_data(audio_bytes, facial_data, accumulated_audio, accumulated_facial_data, encoded_facial_data, py_face, single_entry)
+        audio_duration = len(audio_bytes) / realtime_config["sample_width"] /  realtime_config["sample_rate"]
+        playback_start_time = time.time()
+        events_queue.put(f"ANIM_START:{audio_duration}")
+        log_queue.put(f"Time from queue reception to addition to encoded queue: {playback_start_time - received_time:.3f} seconds.")
+    events_queue.put(f"ANIM_END:{time.time()}")
+
+    time.sleep(0.1)
+    audio_face_queue.join()
+
+    stop_worker.set()
+    playback_thread.join()
+
+    log_queue.put(None)  # Signal log thread to exit
+    log_thread.join()
+
+    time.sleep(0.01)
+    with queue_lock:
+        stop_default_animation.clear()
+        new_default_thread = Thread(target=default_animation_loop, args=(py_face,))
+        new_default_thread.start()
+
 def audio_face_queue_worker_realtime(audio_face_queue, py_face, socket_connection, default_animation_thread):
     """
     Streams (audio_bytes, facial_data) pairs in real-time.
@@ -108,16 +176,18 @@ def process_wav_file(wav_file, py_face, socket_connection, default_animation_thr
         print(f"File {wav_file} does not exist.")
         return
 
+    tm_start = time.time();
     # Read the wav file as bytes
     audio_bytes = read_audio_file_as_bytes(wav_file)
-
+    print(f"Reading file took {time.time()-tm_start}");
+    tm_start = time.time();
     if audio_bytes is None:
         print(f"Failed to read {wav_file}")
         return
 
     # Send the audio bytes to the API and get the blendshapes
     blendshapes = send_audio_to_neurosync(audio_bytes)
-
+    print(f"send_audio_to_neurosync {time.time()-tm_start}");
     if blendshapes is None:
         print("Failed to get blendshapes from the API.")
         return
@@ -136,10 +206,13 @@ def conversion_worker(conversion_queue, audio_queue, sample_rate, channels, samp
             break
 
         wav_audio = bytes_to_wav(audio_chunk, sample_rate, channels, sample_width)
+        t = time.time()
         facial_data = send_audio_to_neurosync(wav_audio.getvalue())
+        print(f"send_audio_to_neurosync {time.time()-t}");
 
         audio_queue.put((audio_chunk, facial_data))
         conversion_queue.task_done()
+
 
 def log_timing_worker(log_queue):
     """
