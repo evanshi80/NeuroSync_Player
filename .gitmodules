@@ -1,0 +1,3 @@
+[submodule "local_api"]
+	path = local_api
+	url = https://github.com/evanshi80/NeuroSync_Local_API
