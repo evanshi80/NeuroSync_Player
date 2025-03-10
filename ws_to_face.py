@@ -1,4 +1,6 @@
+import os
 from queue import Queue, Empty
+import sys
 import threading
 import keyboard
 import pygame
@@ -6,6 +8,11 @@ import warnings
 import time
 import asyncio
 import websockets
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+subproject_dir = os.path.join(current_dir, 'local_api')
+if subproject_dir not in sys.path:
+    sys.path.insert(0, subproject_dir)
 
 warnings.filterwarnings(
     "ignore", 

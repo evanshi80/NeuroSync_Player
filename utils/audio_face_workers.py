@@ -12,9 +12,9 @@ from utils.generated_runners import run_audio_animation_from_bytes, run_audio_an
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
 from utils.llm.realtime_queue_utils import playback_loop, accumulate_data
 from utils.files.file_utils import save_generated_data_from_wav
-from utils.neurosync.neurosync_api_connect import send_audio_to_neurosync
 from utils.audio.play_audio import read_audio_file_as_bytes
 from utils.audio.convert_audio import bytes_to_wav
+from utils.neurosync.local_api_connect import send_audio_to_neurosync
 
 queue_lock = Lock()
 
