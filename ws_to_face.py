@@ -1,13 +1,17 @@
+import io
 import os
 from queue import Queue, Empty
 import sys
 import threading
 import keyboard
+import librosa
+import numpy as np
 import pygame
 import warnings
 import time
 import asyncio
 import websockets
+import soundfile as sf
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 subproject_dir = os.path.join(current_dir, 'local_api')
@@ -31,6 +35,24 @@ realtime_config = {
     "channels": 1, 
     "sample_width": 2
 }
+
+def warmup_librosa(original_sr=24000, target_sr=88200):
+    t0 = time.time()
+    # 创建一个简单的正弦波音频（0.1秒的440Hz音频）
+    duration = 0.1  # 0.1秒
+    t = np.linspace(0, duration, int(original_sr * duration), endpoint=False)
+    dummy_audio = 0.5 * np.sin(2 * np.pi * 440 * t)
+
+    # 将生成的音频写入内存中的WAV文件（PCM16格式）
+    buf = io.BytesIO()
+    sf.write(buf, dummy_audio, original_sr, format='WAV', subtype='PCM_16')
+    buf.seek(0)
+
+    # 使用 librosa.load 加载音频，并上采样到目标采样率
+    y, sr = librosa.load(buf, sr=target_sr)
+    print("Librosa 预热完成，加载耗时:", time.time()-t0)
+
+
 
 def flush_queue(q):
     try:
@@ -129,7 +151,7 @@ def main():
     # 启动 WebSocket 服务器线程，接收客户端上传的音频数据，直接放入 conversion_queue
     ws_thread = threading.Thread(
         target=ws_audio_server,
-        args=(conversion_queue, "0.0.0.0", 8766),
+        args=(conversion_queue, "0.0.0.0", 8768),
         daemon=True
     )
     ws_thread.start()
@@ -155,4 +177,6 @@ def main():
         print("系统已退出。")
 
 if __name__ == "__main__":
+    warmup_librosa()
     main()
+    

@@ -4,6 +4,7 @@
 
 
 import os
+import sys
 import pygame
 import warnings
 warnings.filterwarnings(
@@ -11,6 +12,12 @@ warnings.filterwarnings(
     message="Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work"
 )
 from threading import Thread
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+subproject_dir = os.path.join(current_dir, 'local_api')
+if subproject_dir not in sys.path:
+    sys.path.insert(0, subproject_dir)
+
 
 from livelink.connect.livelink_init import create_socket_connection, initialize_py_face
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
