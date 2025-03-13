@@ -3,6 +3,7 @@
 # For individuals and businesses earning **under $1M per year**, this software is licensed under the **MIT License**
 # Businesses or organizations with **annual revenue of $1,000,000 or more** must obtain permission to use this software commercially.
 
+import logging
 import os
 import time
 from threading import Thread, Event, Lock
@@ -14,7 +15,8 @@ from utils.llm.realtime_queue_utils import playback_loop, accumulate_data
 from utils.files.file_utils import save_generated_data_from_wav
 from utils.audio.play_audio import read_audio_file_as_bytes
 from utils.audio.convert_audio import bytes_to_wav
-from utils.neurosync.local_api_connect import send_audio_to_neurosync
+from utils.neurosync.neurosync_api_connect_x import send_audio_to_neurosync
+
 
 queue_lock = Lock()
 
@@ -171,32 +173,49 @@ def process_wav_file(wav_file, py_face, socket_connection, default_animation_thr
     """
     Processes the wav file by sending it to the API and running the animation.
     """
+    # Inform the user that processing is starting
+    print(f"Starting processing of WAV file: {wav_file}")  # << Added print
+
     # Check if the file exists
     if not os.path.exists(wav_file):
-        print(f"File {wav_file} does not exist.")
+        print(f"File {wav_file} does not exist.")  # << Existing error print
         return
 
-    tm_start = time.time();
+    # Inform the user that the file exists and we are reading it
+    print("File exists. Reading audio file bytes...")  # << Added print
+
     # Read the wav file as bytes
     audio_bytes = read_audio_file_as_bytes(wav_file)
-    print(f"Reading file took {time.time()-tm_start}");
-    tm_start = time.time();
+
     if audio_bytes is None:
-        print(f"Failed to read {wav_file}")
+        print(f"Failed to read {wav_file}")  # << Existing error print
         return
+
+    # Inform the user that the audio file was read successfully
+    print("Audio file read successfully. Sending audio to the API for processing...")  # << Added print
 
     # Send the audio bytes to the API and get the blendshapes
     blendshapes = send_audio_to_neurosync(audio_bytes)
-    print(f"send_audio_to_neurosync {time.time()-tm_start}");
+
     if blendshapes is None:
-        print("Failed to get blendshapes from the API.")
+        print("Failed to get blendshapes from the API.")  # << Existing error print
         return
+
+    # Inform the user that the blendshapes were received
+    print("Received blendshapes from the API. Running audio animation...")  # << Added print
 
     # Run the animation using the blendshapes data
     run_audio_animation(wav_file, blendshapes, py_face, socket_connection, default_animation_thread)
 
+    # Inform the user that the animation is complete and data is being saved
+    print("Animation finished. Saving generated blendshape data...")  # << Added print
+
     # Save the generated blendshape data
     save_generated_data_from_wav(wav_file, blendshapes)
+    
+    # Inform the user that all processing is complete
+    print("Processing completed successfully.")  # << Added print
+
 
 def conversion_worker(conversion_queue, audio_queue, sample_rate, channels, sample_width):
     while True:
@@ -206,9 +225,10 @@ def conversion_worker(conversion_queue, audio_queue, sample_rate, channels, samp
             break
 
         wav_audio = bytes_to_wav(audio_chunk, sample_rate, channels, sample_width)
+        logging.debug(f"bytes_to_wav took: {time.time()-t}");
         t = time.time()
         facial_data = send_audio_to_neurosync(wav_audio.getvalue())
-        print(f"send_audio_to_neurosync {time.time()-t}");
+        logging.debug(f"send_audio_to_neurosync took: {time.time()-t}");
 
         audio_queue.put((audio_chunk, facial_data))
         conversion_queue.task_done()
@@ -223,6 +243,6 @@ def log_timing_worker(log_queue):
             log_entry = log_queue.get()
             if log_entry is None:
                 break  # Exit the thread
-            print(log_entry)
+            logging.info(log_entry)
         except Exception as e:
-            print(f"Logging error: {e}")
+            logging.warning(f"Logging error: {e}")

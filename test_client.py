@@ -15,7 +15,7 @@ async def send_files(chunk_size=1024, target_sr=24000):
     
     如果传入的 chunk_size 小于 7200 字节，则自动调整为 7200 字节。
     """
-    uri = "ws://localhost:8766"
+    uri = "ws://localhost:8768"
     wav_files = [
         "wav_input/DebugAudio.wav", 
     ]

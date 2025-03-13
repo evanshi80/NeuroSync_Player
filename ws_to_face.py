@@ -1,57 +1,34 @@
-import io
-import os
+import logging
 from queue import Queue, Empty
-import sys
 import threading
-import keyboard
-import librosa
-import numpy as np
 import pygame
-import warnings
 import time
 import asyncio
 import websockets
-import soundfile as sf
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-subproject_dir = os.path.join(current_dir, 'local_api')
-if subproject_dir not in sys.path:
-    sys.path.insert(0, subproject_dir)
-
-warnings.filterwarnings(
-    "ignore", 
-    message="Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work"
-)
 
 from livelink.connect.livelink_init import create_socket_connection, initialize_py_face
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
 
-from utils.audio_face_workers import audio_face_queue_worker_realtime, audio_face_queue_worker_realtime_v2, conversion_worker
+from utils.audio_face_workers import audio_face_queue_worker_realtime_v2, conversion_worker
+
+# 配置根日志记录器，设置调试级别
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+# 单独为 httpx 和 httpcore 模块设置调试级别
+logging.getLogger("httpx").setLevel(logging.DEBUG)
+logging.getLogger("httpcore").setLevel(logging.DEBUG)
 
 # 配置实时参数（用于转换处理）
 realtime_config = {
-    "min_buffer_duration": 6, 
-    "sample_rate": 22050, 
-    "channels": 1, 
+    "min_buffer_duration": 6,
+    "sample_rate": 24000,
+    "channels": 1,
     "sample_width": 2
 }
-
-def warmup_librosa(original_sr=24000, target_sr=88200):
-    t0 = time.time()
-    # 创建一个简单的正弦波音频（0.1秒的440Hz音频）
-    duration = 0.1  # 0.1秒
-    t = np.linspace(0, duration, int(original_sr * duration), endpoint=False)
-    dummy_audio = 0.5 * np.sin(2 * np.pi * 440 * t)
-
-    # 将生成的音频写入内存中的WAV文件（PCM16格式）
-    buf = io.BytesIO()
-    sf.write(buf, dummy_audio, original_sr, format='WAV', subtype='PCM_16')
-    buf.seek(0)
-
-    # 使用 librosa.load 加载音频，并上采样到目标采样率
-    y, sr = librosa.load(buf, sr=target_sr)
-    print("Librosa 预热完成，加载耗时:", time.time()-t0)
-
 
 
 def flush_queue(q):
@@ -61,8 +38,9 @@ def flush_queue(q):
     except Empty:
         pass
 
+
 current_websocket = None
-ws_event_loop = None  # 用于保存WebSocket服务器的事件循环
+ws_event_loop = None  # 用于保存 WebSocket 服务器的事件循环
 
 def ws_audio_server(conversion_queue, host="0.0.0.0", port=8766):
     """
@@ -73,24 +51,24 @@ def ws_audio_server(conversion_queue, host="0.0.0.0", port=8766):
 
     async def handler(websocket):
         global current_websocket
-        print(f"新客户端连接: {websocket.remote_address}")
+        logging.info(f"新客户端连接: {websocket.remote_address}")
         current_websocket = websocket
         try:
             async for message in websocket:
                 if isinstance(message, bytes):
                     conversion_queue.put(message)
-                    print(f"接收到{len(message)} bytes音频数据，并已放入转换队列。前4个字节：{message[:4].hex()}")
+                    logging.info(f"接收到{len(message)} bytes音频数据，并已放入转换队列。前4个字节：{message[:4].hex()}")
                 else:
-                    print("收到文本消息:", message)
+                    logging.info("收到文本消息: %s", message)
         except websockets.ConnectionClosed:
-            print("客户端断开连接。")
+            logging.info("客户端断开连接。")
 
     async def server_main():
         server = await websockets.serve(handler, host, port)
-        print(f"WebSocket服务器启动，监听 {host}:{port}")
+        logging.info(f"WebSocket服务器启动，监听 {host}:{port}")
         await server.wait_closed()
 
-    # 创建并设置一个新的事件循环，用于WebSocket服务器
+    # 创建并设置一个新的事件循环，用于 WebSocket 服务器
     ws_event_loop = asyncio.new_event_loop()
     asyncio.set_event_loop(ws_event_loop)
     ws_event_loop.run_until_complete(server_main())
@@ -99,14 +77,14 @@ def events_dispatcher(events_queue):
     global current_websocket, ws_event_loop
     while True:
         event = events_queue.get()
-        if event is None:  
+        if event is None:
             events_queue.task_done()
             break
         if current_websocket is not None and ws_event_loop is not None:
-            # 将发送操作调度到WebSocket服务器的事件循环中执行
+            # 将发送操作调度到 WebSocket 服务器的事件循环中执行
             asyncio.run_coroutine_threadsafe(current_websocket.send(event), ws_event_loop)
-            print(f"向客户端发送消息{event}")
-        events_queue.task_done()   
+            logging.info(f"向客户端发送消息: {event}")
+        events_queue.task_done()
 
 def main():
     # 初始化人脸模块、socket 连接和默认动画
@@ -124,10 +102,10 @@ def main():
     conversion_worker_thread = threading.Thread(
         target=conversion_worker,
         args=(
-            conversion_queue, 
-            audio_face_queue, 
-            realtime_config["sample_rate"], 
-            realtime_config["channels"], 
+            conversion_queue,
+            audio_face_queue,
+            realtime_config["sample_rate"],
+            realtime_config["channels"],
             realtime_config["sample_width"]
         ),
         daemon=True
@@ -140,7 +118,7 @@ def main():
         args=(events_queue,)
     )
     events_dispatcher_thread.start()
-    
+
     # 启动音频处理工作线程：从 audio_face_queue 中获取数据进行后续处理（如音频驱动人脸）
     audio_worker_thread = threading.Thread(
         target=audio_face_queue_worker_realtime_v2,
@@ -157,13 +135,13 @@ def main():
     ws_thread.start()
 
     try:
-        print("系统启动，WebSocket服务器正在监听客户端音频数据。按 'q' 键退出。")
+        logging.info("系统启动，WebSocket服务器正在监听客户端音频数据。按 'Ctrl+C' 键退出。")
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
-        print("检测到退出指令 (Ctrl+C)。")            
+        logging.info("检测到退出指令 (Ctrl+C)。")
     finally:
-        # 通知退出：通过放入 None 让各队列消费者退出
+        # 通知退出：通过放入 None 让各队列消费者退出 
         conversion_queue.put(None)
         audio_face_queue.put(None)
         events_queue.put(None)
@@ -174,9 +152,7 @@ def main():
         default_animation_thread.join()
         pygame.quit()
         socket_connection.close()
-        print("系统已退出。")
+        logging.info("系统已退出。")
 
 if __name__ == "__main__":
-    warmup_librosa()
     main()
-    
