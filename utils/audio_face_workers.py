@@ -168,7 +168,6 @@ def audio_face_queue_worker(audio_face_queue, py_face, socket_connection, defaul
         run_audio_animation_from_bytes(audio_bytes, facial_data, py_face, socket_connection, default_animation_thread)
         audio_face_queue.task_done()
 
-
 def process_wav_file(wav_file, py_face, socket_connection, default_animation_thread):
     """
     Processes the wav file by sending it to the API and running the animation.
