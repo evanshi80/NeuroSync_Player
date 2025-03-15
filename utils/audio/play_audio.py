@@ -84,7 +84,7 @@ def play_audio_from_memory_openai(audio_data, start_event, sync=True):
         init_pygame_mixer()
         if not audio_data.startswith(b'RIFF'):
             # Convert raw PCM to WAV using default parameters.
-            audio_file = pcm_to_wav(audio_data, sample_rate=22050, channels=1, sample_width=2)
+            audio_file = pcm_to_wav(audio_data, sample_rate=24000, channels=1, sample_width=2)
         else:
             audio_file = io.BytesIO(audio_data)
         pygame.mixer.music.load(audio_file)

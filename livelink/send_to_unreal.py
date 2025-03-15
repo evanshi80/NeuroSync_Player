@@ -196,6 +196,7 @@ def send_pre_encoded_data_to_unreal(encoded_facial_data: List[bytes], start_even
 
         frame_duration = 1 / fps  # Time per frame in seconds
         start_time = time.time()  # Get the initial start time
+        time.sleep(0.01)
 
         for frame_index, frame_data in enumerate(encoded_facial_data):
             current_time = time.time()

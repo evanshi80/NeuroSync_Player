@@ -23,7 +23,7 @@ def check_and_restart_default_animation(accumulated_audio, encoded_facial_data, 
             new_default_thread = Thread(target=default_animation_loop, args=(py_face,))
             new_default_thread.start()
 
-def playback_loop(stop_worker, start_event, accumulated_audio, encoded_facial_data, audio_face_queue, py_face, socket_connection, default_animation_thread, log_queue):
+def playback_loop(stop_worker, start_event, accumulated_audio, encoded_facial_data, audio_face_queue, py_face, socket_connection, default_animation_thread, log_queue, events_queue):
     """
     Continuously plays accumulated audio and encoded facial data.
     """
@@ -43,9 +43,10 @@ def playback_loop(stop_worker, start_event, accumulated_audio, encoded_facial_da
             default_animation_thread.join()
 
         playback_start_time = time.time()
-
+        frame_duration = len(playback_facial_data) / 60
+        events_queue.put(f"ANIM_START:{frame_duration}")
         play_audio_and_animation_openai_realtime(playback_audio, playback_facial_data, start_event, socket_connection)
-
+        events_queue.put(f"ANIM_END")
         playback_end_time = time.time()
         log_queue.put(f"Playback duration: {playback_end_time - playback_start_time:.3f} seconds.")
 

@@ -47,6 +47,7 @@ def audio_face_queue_worker_realtime_v2(audio_face_queue, events_queue, realtime
             socket_connection,
             default_animation_thread,
             log_queue,  # Pass the log queue
+            events_queue, 
         ),
         daemon=True
     )
@@ -67,11 +68,8 @@ def audio_face_queue_worker_realtime_v2(audio_face_queue, events_queue, realtime
         # Changed: Determine if this is the only entry by checking if the queue is empty.
         single_entry = audio_face_queue.empty()
         accumulate_data(audio_bytes, facial_data, accumulated_audio, accumulated_facial_data, encoded_facial_data, py_face, single_entry)
-        audio_duration = len(audio_bytes) / realtime_config["sample_width"] /  realtime_config["sample_rate"]
         playback_start_time = time.time()
-        events_queue.put(f"ANIM_START:{audio_duration}")
         log_queue.put(f"Time from queue reception to addition to encoded queue: {playback_start_time - received_time:.3f} seconds.")
-    events_queue.put(f"ANIM_END:{time.time()}")
 
     time.sleep(0.1)
     audio_face_queue.join()
