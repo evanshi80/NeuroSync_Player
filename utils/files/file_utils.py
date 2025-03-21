@@ -1,16 +1,14 @@
 import os
 import shutil
-import pandas as pd
 import wave
 import uuid
 import numpy as np
 import soundfile as sf
 
-
 from utils.csv.save_csv import save_generated_data_as_csv
 from utils.audio.save_audio import save_audio_file
-
 from utils.neurosync.neurosync_api_connect import send_audio_to_neurosync
+
 
 GENERATED_DIR = 'generated'
 
@@ -53,7 +51,6 @@ def reprocess_generated_files():
             
             print(f"New shapes.csv generated and old shapes.csv moved to {old_dir}")
 
-
 def initialize_directories():
     if not os.path.exists(GENERATED_DIR):
         os.makedirs(GENERATED_DIR)
@@ -89,28 +86,15 @@ def list_generated_files():
             generated_files.append((audio_path, shapes_path))
     return generated_files
 
-def load_facial_data_from_csv(csv_path):
+def load_animation(csv_path):
     """
-    Load facial data from a CSV file, excluding 'Timecode' and 'BlendshapeCount' columns.
-    Then set specific columns to 0 for the entire length of each column.
-
-    Columns to set to zero: [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 51, 
-                             52, 53, 54, 55, 56, 57, 58, 59, 60]
+    Loads the default animation CSV file
+    Returns the animation data as a NumPy array.
     """
     data = pd.read_csv(csv_path)
-
-    data = data.drop(columns=['Timecode', 'BlendshapeCount'], errors='ignore')
-
-    zero_cols = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
-
-
-    for col_idx in zero_cols:
-        if col_idx < len(data.columns):
-            data.iloc[:, col_idx] = 0
-
-
+    data = data.drop(columns=['Timecode', 'BlendshapeCount'])
     return data.values
+
 
 def save_generated_data(audio_bytes, generated_facial_data):
     unique_id = str(uuid.uuid4())
@@ -156,3 +140,6 @@ def save_generated_data_from_wav(wav_file_path, generated_facial_data):
     save_generated_data_as_csv(generated_facial_data, shapes_path)
 
     return unique_id, audio_path, shapes_path
+
+
+

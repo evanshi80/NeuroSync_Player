@@ -8,8 +8,7 @@ import random
 from utils.audio.play_audio import (
     play_audio_from_path, 
     play_audio_from_memory, 
-    play_audio_bytes, 
-    play_audio_from_memory_openai
+    play_audio_bytes
 )
 from livelink.send_to_unreal import pre_encode_facial_data, send_pre_encoded_data_to_unreal
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
@@ -38,19 +37,6 @@ def run_encoded_audio_animation(audio_bytes, encoded_facial_data, socket_connect
     data_thread.join()
 
 
-def play_audio_and_animation_openai_realtime(playback_audio, playback_facial_data, start_event, socket_connection):
-    """
-    Plays audio and sends animation data using separate threads.
-    """
-    audio_thread = Thread(target=play_audio_from_memory_openai, args=(playback_audio, start_event))
-    data_thread = Thread(target=send_pre_encoded_data_to_unreal, args=(playback_facial_data, start_event, 60, socket_connection))
-
-    audio_thread.start()
-    data_thread.start()
-    start_event.set()
-
-    audio_thread.join()
-    data_thread.join()
 
 def run_audio_animation_from_bytes(audio_bytes, generated_facial_data, py_face, socket_connection, default_animation_thread):
     # Check that generated_facial_data is not None, has at least one frame,
@@ -65,7 +51,7 @@ def run_audio_animation_from_bytes(audio_bytes, generated_facial_data, py_face, 
         
         facial_data_array = np.array(generated_facial_data)
         dominant_emotion = determine_highest_emotion(facial_data_array)
-        print(f"Dominant emotion: {dominant_emotion}")
+     #   print(f"Dominant emotion: {dominant_emotion}")
         if dominant_emotion in emotion_animations and len(emotion_animations[dominant_emotion]) > 0:
             selected_animation = random.choice(emotion_animations[dominant_emotion])
             generated_facial_data = merge_emotion_data_into_facial_data_wrapper(
@@ -111,7 +97,7 @@ def run_audio_animation(audio_path, generated_facial_data, py_face, socket_conne
         
         facial_data_array = np.array(generated_facial_data)
         dominant_emotion = determine_highest_emotion(facial_data_array)
-        print(f"Dominant emotion: {dominant_emotion}")
+     #   print(f"Dominant emotion: {dominant_emotion}")
         if dominant_emotion in emotion_animations and len(emotion_animations[dominant_emotion]) > 0:
             selected_animation = random.choice(emotion_animations[dominant_emotion])
             generated_facial_data = merge_emotion_data_into_facial_data_wrapper(generated_facial_data, selected_animation, alpha=0.7)

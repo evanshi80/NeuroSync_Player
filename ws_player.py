@@ -1,8 +1,7 @@
 import base64
-import io
 import json
 import logging
-from queue import Queue, Empty
+from queue import Queue
 import threading
 import wave
 import pygame
@@ -13,8 +12,21 @@ import websockets
 from livelink.connect.livelink_init import create_socket_connection, initialize_py_face
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
 
-from utils.audio_face_workers import audio_face_queue_worker_realtime_v2, conversion_worker
-from utils.llm.realtime_api_utils import compute_min_buffer_size
+from utils.audio_face_workers import audio_face_queue_worker
+
+
+def compute_min_buffer_size(realtime_config):
+    """
+    Compute the minimum buffer size based on realtime configuration parameters.
+    """
+    # Retrieve configuration values with defaults
+    sample_rate = realtime_config.get("sample_rate", 22050)
+    channels = realtime_config.get("channels", 1)
+    sample_width = realtime_config.get("sample_width", 2)
+    min_buffer_duration = realtime_config.get("min_buffer_duration", 5)
+    # Compute and return the minimum buffer size needed
+    return int(min_buffer_duration * sample_rate * channels * sample_width)
+
 
 # 配置根日志记录器，设置调试级别
 logging.basicConfig(
@@ -172,10 +184,11 @@ def main():
     events_dispatcher_thread.start()
 
     # 启动音频处理工作线程：从 audio_face_queue 中获取数据进行后续处理（如音频驱动人脸）
-    audio_worker_thread = threading.Thread(
-        target=audio_face_queue_worker_realtime_v2,
-        args=(audio_face_queue, events_queue, realtime_config, py_face, socket_connection, default_animation_thread)
-    )
+    audio_worker_thread =  threading.Thread(target=audio_face_queue_worker, args=(audio_face_queue, py_face, socket_connection, default_animation_thread)) 
+    # threading.Thread(
+    #     target=audio_face_queue_worker_realtime_v2,
+    #     args=(audio_face_queue, events_queue, realtime_config, py_face, socket_connection, default_animation_thread)
+    # )
     audio_worker_thread.start()
 
     # 启动 WebSocket 服务器线程，接收客户端上传的音频、字幕及动画数据数据，直接放入 audio_face_queue
