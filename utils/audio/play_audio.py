@@ -83,8 +83,9 @@ def play_audio_from_memory(audio_data, start_event, sync=False):
         audio_file = io.BytesIO(audio_data)
         pygame.mixer.music.load(audio_file)
         start_event.wait()
+        print(f"{time.time()} Playing audio from memory...{len(audio_data)/(2*24000)} seconds")
         pygame.mixer.music.play()
-        simple_playback_loop()
+        sync_playback_loop()
     except pygame.error as e:
         if "Unknown WAVE format" in str(e):
             print("Unknown WAVE format encountered. Skipping to the next item in the queue.")

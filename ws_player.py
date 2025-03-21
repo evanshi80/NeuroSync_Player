@@ -12,6 +12,7 @@ import websockets
 from livelink.connect.livelink_init import create_socket_connection, initialize_py_face
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
 
+from utils.audio.convert_audio import pcm_to_wav
 from utils.audio_face_workers import audio_face_queue_worker
 
 
@@ -72,7 +73,7 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
     只有当累计的音频数据达到 min_buffer_size 时才推送数据到 audio_face_queue。
     """
     global current_websocket, ws_event_loop
-    min_buffer_size = compute_min_buffer_size(realtime_config)
+    min_buffer_size = 0 #compute_min_buffer_size(realtime_config)
     
     async def handler(websocket):
         global current_websocket
@@ -89,7 +90,9 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
                     if message == '<END>':
                         # 收到 <END> 消息时，先把剩余缓冲数据（不足 min_buffer_size 的部分）推送出去
                         if buffer_audio:
-                            audio_face_queue.put((bytes(buffer_audio), buffer_facial_data.copy()))
+                            # Convert raw PCM to WAV using default parameters.
+                            audio_file = pcm_to_wav(bytes(buffer_audio), sample_rate=24000, channels=1, sample_width=2)
+                            audio_face_queue.put((audio_file.getvalue(), buffer_facial_data.copy()))
                             buffer_audio.clear()
                             buffer_facial_data.clear()
                         # 同时处理 TTS 调试数据
@@ -125,7 +128,8 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
                         # 检查缓冲区是否已达到最小要求
                         if len(buffer_audio) >= min_buffer_size:
                             # 达到缓冲要求后，将缓冲数据打包推送到 audio_face_queue
-                            audio_face_queue.put((bytes(buffer_audio), buffer_facial_data.copy()))
+                            audio_file = pcm_to_wav(bytes(buffer_audio), sample_rate=24000, channels=1, sample_width=2)
+                            audio_face_queue.put((audio_file.getvalue(), buffer_facial_data.copy()))
                             # 清空缓冲区，等待下次积累
                             buffer_audio.clear()
                             buffer_facial_data.clear()
