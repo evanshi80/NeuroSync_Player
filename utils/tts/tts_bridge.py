@@ -1,10 +1,14 @@
+# This software is licensed under a **dual-license model**
+# For individuals and businesses earning **under $1M per year**, this software is licensed under the **MIT License**
+# Businesses or organizations with **annual revenue of $1,000,000 or more** must obtain permission to use this software commercially.
+
 from utils.neurosync.multi_part_return import get_tts_with_blendshapes
 from utils.neurosync.neurosync_api_connect import send_audio_to_neurosync
 from utils.tts.local_tts import call_local_tts 
 from utils.tts.eleven_labs import get_elevenlabs_audio
 import string
 
-def tts_worker(chunk_queue, audio_queue, USE_LOCAL_AUDIO=True, VOICE_NAME='Lily', USE_COMBINED_ENDPOINT=False):
+def tts_worker(chunk_queue, audio_queue, USE_LOCAL_AUDIO=True, VOICE_NAME=None, USE_COMBINED_ENDPOINT=False):
     """
     Processes text chunks from chunk_queue.
     
@@ -33,7 +37,7 @@ def tts_worker(chunk_queue, audio_queue, USE_LOCAL_AUDIO=True, VOICE_NAME='Lily'
 
         if USE_COMBINED_ENDPOINT:
             # Use the combined endpoint: one call returns both audio and blendshapes.
-            audio_bytes, blendshapes = get_tts_with_blendshapes(chunk)
+            audio_bytes, blendshapes = get_tts_with_blendshapes(chunk, VOICE_NAME)
             if audio_bytes and blendshapes:
                 audio_queue.put((audio_bytes, blendshapes))
             else:
