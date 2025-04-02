@@ -75,10 +75,8 @@ def send_pre_encoded_data_to_unreal(encoded_facial_data: List[bytes], start_even
             elapsed_time = current_time - start_time
             expected_time = frame_index * frame_duration 
             if elapsed_time < expected_time:
-                print(f"Sleeping for {expected_time - elapsed_time:.4f} seconds")
                 time.sleep(expected_time - elapsed_time)
             elif elapsed_time > expected_time + frame_duration:
-                print(f"Frame {frame_index} is late by {elapsed_time - expected_time:.4f} seconds")
                 continue
 
             socket_connection.sendall(frame_data)  

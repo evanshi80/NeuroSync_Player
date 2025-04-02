@@ -26,17 +26,17 @@ def audio_face_queue_worker(audio_face_queue, py_face, socket_connection, defaul
             audio_face_queue.task_done()
             break
 
-        if enable_emote_calls:
-            EmoteConnect.send_emote("startspeaking")
-            speaking = True
+        # if enable_emote_calls:
+        #     EmoteConnect.send_emote("startspeaking")
+        #     speaking = True
 
         audio_bytes, facial_data = item
         run_audio_animation(audio_bytes, facial_data, py_face, socket_connection, default_animation_thread)
         audio_face_queue.task_done()
 
-        if enable_emote_calls:
-            EmoteConnect.send_emote("stopspeaking")
-            speaking = False
+        # if enable_emote_calls:
+        #     EmoteConnect.send_emote("stopspeaking")
+        #     speaking = False
     
     
 def log_timing_worker(log_queue):

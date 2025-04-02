@@ -197,7 +197,7 @@ def events_dispatcher(events_queue):
             break
         if current_websocket is not None and ws_event_loop is not None:
             # 将发送操作调度到 WebSocket 服务器的事件循环中执行
-            time.sleep(0.3) 
+            # time.sleep(0.3) 
             asyncio.run_coroutine_threadsafe(current_websocket.send(event), ws_event_loop)
             logging.info(f"向客户端发送消息: {event}")
         events_queue.task_done()

@@ -13,6 +13,7 @@ from livelink.animations.default_animation import default_animation_loop, stop_d
 from livelink.connect.livelink_init import initialize_py_face 
 from livelink.animations.animation_emotion import determine_highest_emotion,  merge_emotion_data_into_facial_data_wrapper
 from livelink.animations.animation_loader import emotion_animations
+from utils.emote_sender.send_emote import EmoteConnect
 
 queue_lock = Lock()
 
@@ -54,9 +55,10 @@ def run_audio_animation(audio_input, generated_facial_data, py_face, socket_conn
     data_thread.start()
 
     start_event.set()
-
+    EmoteConnect.send_emote("startspeaking")
     audio_thread.join()
     data_thread.join()
+    EmoteConnect.send_emote("stopspeaking")
 
     with queue_lock:
         stop_default_animation.clear()
