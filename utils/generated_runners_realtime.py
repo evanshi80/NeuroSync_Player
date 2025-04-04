@@ -4,7 +4,6 @@
 
 
 import logging
-import queue
 from threading import Thread, Event, Lock
 import numpy as np
 import random
