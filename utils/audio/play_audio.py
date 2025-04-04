@@ -7,6 +7,7 @@ It also supports audio conversion on the fly (e.g. raw PCM to WAV) where needed.
 """
 
 import io
+import logging
 import time
 import pygame
 from utils.audio.convert_audio import convert_to_wav
@@ -79,11 +80,12 @@ def play_audio_from_memory(audio_data, start_event, sync=False):
     Uses a simple playback loop.
     """
     try:
+        logging.info(f"{time.time()} init pygame mixer...")  
         init_pygame_mixer()
         audio_file = io.BytesIO(audio_data)
         pygame.mixer.music.load(audio_file)
         start_event.wait()
-        print(f"{time.time()} Playing audio from memory...{len(audio_data)/(2*24000)} seconds")
+        logging.info(f"{time.time()} Playing audio from memory...{len(audio_data)/(2*24000)} seconds")
         pygame.mixer.music.play()
         sync_playback_loop()
     except pygame.error as e:

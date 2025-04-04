@@ -14,10 +14,7 @@ import websockets
 from livelink.connect.livelink_init import create_socket_connection, initialize_py_face
 from livelink.animations.default_animation import default_animation_loop, stop_default_animation
 
-from livelink.send_to_unreal import pre_encode_facial_data,send_pre_encoded_data_to_unreal
-from utils.audio.convert_audio import pcm_to_wav
-from utils.audio.play_audio import init_pygame_mixer, play_audio_from_memory, simple_playback_loop, sync_playback_loop
-from utils.audio_face_workers import audio_face_queue_worker, log_timing_worker
+from utils.generated_runners_realtime import audio_face_queue_worker, playback_worker
 
 
 def compute_min_buffer_size(realtime_config):
@@ -46,12 +43,24 @@ logging.getLogger("httpcore").setLevel(logging.DEBUG)
 
 # 配置实时参数（用于转换处理）
 realtime_config = {
-    "min_buffer_duration": 2,
+    "min_buffer_duration": 1,
     "sample_rate": 24000,
     "channels": 1,
     "sample_width": 2
 }
 
+def bytes_to_wav(audio_bytes, sample_rate=24000, channels=1, sample_width=2):
+    """
+    Wrap raw audio bytes into a WAV container and return a BytesIO object.
+    """
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio_bytes)
+    wav_io.seek(0)
+    return wav_io
 
 # debug method to save the last audio recieved from client side as a wave file
 def save_audio_to_wav(pcm_data: bytes, filename="debug_audio.wav", sample_rate=24000):
@@ -94,9 +103,7 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
                     if message == '<END>':
                         # 收到 <END> 消息时，先把剩余缓冲数据（不足 min_buffer_size 的部分）推送出去
                         if buffer_audio:
-                            audio_face_queue.put((bytes(buffer_audio), buffer_facial_data.copy()))
-                            buffer_audio.clear()
-                            buffer_facial_data.clear()
+                            enqueue_audio_audio_facial_data(buffer_audio, buffer_facial_data)
                         # 同时处理 TTS 调试数据
                         audio_bytes_list = []
                         while not debug_queue.empty():
@@ -108,16 +115,17 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
                     else:
                         data = json.loads(message)
                         audio_bytes = base64.b64decode(data["audio"])
-                        logging.info("收到TTS语音: %s bytes", len(audio_bytes))
+                        # logging.info("收到TTS语音: %s bytes", len(audio_bytes))
 
                         blendshapes = data["blendshapes"]
-                        logging.info("收到blendshapes动画: %s elements", len(blendshapes))
+                        # logging.info("收到blendshapes动画: %s elements", len(blendshapes))
 
                         facial_data = []
                         for frame in blendshapes:
                             # 将每一帧的数据转为 float 数组
                             frame_data = [float(value) for value in frame]
                             facial_data.append(frame_data)
+                        # logging.info("完成facial_data数据转型， %s frames", len(facial_data))
 
                         # 将本次接收的数据添加到缓冲区
                         buffer_audio.extend(audio_bytes)
@@ -129,11 +137,9 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
 
                         # 检查缓冲区是否已达到最小要求
                         if len(buffer_audio) >= min_buffer_size:
+                            logging.info("缓冲区已满，准备推送数据到 audio_face_queue")
                             # 达到缓冲要求后，将缓冲数据打包推送到 audio_face_queue
-                            audio_face_queue.put((bytes(buffer_audio), buffer_facial_data.copy()))
-                            # 清空缓冲区，等待下次积累
-                            buffer_audio.clear()
-                            buffer_facial_data.clear()
+                            enqueue_audio_audio_facial_data(buffer_audio, buffer_facial_data)
                 else:
                     logging.info("收到非业务消息: %s", message)
         except websockets.ConnectionClosed:
@@ -141,9 +147,15 @@ def ws_audio_server(audio_face_queue, host="0.0.0.0", port=8766, debug_queue: Qu
         finally:
             # 如果 websocket 关闭后，仍有剩余数据，可以选择推送出去
             if buffer_audio:
-                audio_face_queue.put((bytes(buffer_audio), buffer_facial_data.copy()))
-                buffer_audio.clear()
-                buffer_facial_data.clear()
+                logging.info("WebSocket 关闭，推送剩余数据到 audio_face_queue")
+                enqueue_audio_audio_facial_data(buffer_audio, buffer_facial_data)
+
+
+    def enqueue_audio_audio_facial_data(buffer_audio, buffer_facial_data):
+        audio_face_queue.put((bytes_to_wav(bytes(buffer_audio)).getvalue(), buffer_facial_data.copy()))
+                            # 清空缓冲区，等待下次积累
+        buffer_audio.clear()
+        buffer_facial_data.clear()
 
     async def server_main():
         server = await websockets.serve(handler, host, port)
@@ -187,22 +199,41 @@ def tcp_listener(events_queue, stop_event):
                     conn.sendall(b"ACK")
 
 
-
-def events_dispatcher(events_queue):
-    global current_websocket, ws_event_loop
-    while True:
-        event = events_queue.get()
-        if event is None:
-            events_queue.task_done()
-            break
-        if current_websocket is not None and ws_event_loop is not None:
-            # 将发送操作调度到 WebSocket 服务器的事件循环中执行
-            # time.sleep(0.3) 
-            asyncio.run_coroutine_threadsafe(current_websocket.send(event), ws_event_loop)
-            logging.info(f"向客户端发送消息: {event}")
-        events_queue.task_done()
-
 queue_lock = threading.Lock()
+
+def send_anim_start():
+    """当默认动画停止时，发送动画启动信号（例如启动自定义动画）"""
+    message = f"ANIM_START"
+    if current_websocket is not None and ws_event_loop is not None:
+        asyncio.run_coroutine_threadsafe(current_websocket.send(message), ws_event_loop)
+        logging.info(f"Sent message: {message}")
+
+def send_anim_end():
+    """当默认动画重新启动时，发送动画终止信号"""
+    anim_end_time = time.time()
+    message = f"ANIM_END"
+    if current_websocket is not None and ws_event_loop is not None:
+        asyncio.run_coroutine_threadsafe(current_websocket.send(message), ws_event_loop)
+        logging.info(f"Sent message: {message}")
+
+def events_dispatcher(stop_event):
+    """
+    轮询 stop_default_animation 状态，当状态变化时执行相应回调：
+      - 当 Event 被 set 时，说明默认动画停止，发送动画启动信号
+      - 当 Event 被 cleared 时，说明默认动画重启，发送动画终止信号
+    """
+    last_state = stop_default_animation.is_set()
+    while not stop_event.is_set():
+        current_state = stop_default_animation.is_set()
+        if current_state != last_state:
+            if current_state:
+                send_anim_start()
+            else:
+                send_anim_end()
+            last_state = current_state
+        # 休眠一段时间，避免占用过多 CPU
+        time.sleep(0.005)
+
 
 
 
@@ -218,27 +249,30 @@ def main():
 
     # 定义各个数据处理队列
     audio_face_queue = Queue()
+    playback_queue = Queue()
     events_queue = Queue()
     debug_queue = Queue()
 
     # 启动事件监控线程，将动画启停事件转发给客户端
     events_dispatcher_thread = threading.Thread(
         target=events_dispatcher,
-        args=(events_queue,)
+        args=(stop_event,)
     )
     events_dispatcher_thread.start()
 
     # 启动 TCP 服务器线程，接收客户端发送的动画控制事件
-    tcp_thread = threading.Thread(target=tcp_listener, args=(events_queue,stop_event))
-    tcp_thread.start()
+    # tcp_thread = threading.Thread(target=tcp_listener, args=(events_queue,stop_event))
+    # tcp_thread.start()
 
     # 启动音频处理工作线程：从 audio_face_queue 中获取数据进行后续处理（如音频驱动人脸）
-    audio_worker_thread =  threading.Thread(target=audio_face_queue_worker, args=(audio_face_queue, py_face, socket_connection, default_animation_thread, True)) 
+    audio_worker_thread =  threading.Thread(target=audio_face_queue_worker, args=(audio_face_queue, playback_queue, False)) 
     # audio_worker_thread = threading.Thread(
     #     target=audio_face_queue_worker_realtime_v2,
     #     args=(audio_face_queue, events_queue,  py_face, socket_connection, default_animation_thread)
     # )
     audio_worker_thread.start()
+    playback_thread = threading.Thread(target=playback_worker, args=(playback_queue, py_face, socket_connection, default_animation_thread))
+    playback_thread.start()    
 
     # 启动 WebSocket 服务器线程，接收客户端上传的音频、字幕及动画数据数据，直接放入 audio_face_queue
     ws_thread = threading.Thread(
@@ -258,12 +292,13 @@ def main():
         # 通知退出：通过放入 None 让各队列消费者退出 
         stop_event.set()
         audio_face_queue.put(None)
+        playback_queue.put(None)
         events_queue.put(None)
         events_dispatcher_thread.join()
         audio_worker_thread.join()
         stop_default_animation.set()
         default_animation_thread.join()
-        tcp_thread.join()
+        # tcp_thread.join()
         pygame.quit()
         socket_connection.close()
         logging.info("系统已退出。")

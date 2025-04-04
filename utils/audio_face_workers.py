@@ -5,10 +5,11 @@
 
 
 
+import logging
 import os
 from threading import Lock
 
-from utils.generated_runners import run_audio_animation
+from utils.generated_runners_realtime import run_audio_animation
 from utils.files.file_utils import save_generated_data_from_wav
 from utils.audio.play_audio import read_audio_file_as_bytes
 from utils.emote_sender.send_emote import EmoteConnect
@@ -25,18 +26,18 @@ def audio_face_queue_worker(audio_face_queue, py_face, socket_connection, defaul
         if item is None:
             audio_face_queue.task_done()
             break
-
-        # if enable_emote_calls:
-        #     EmoteConnect.send_emote("startspeaking")
-        #     speaking = True
+        if not speaking and enable_emote_calls:
+            EmoteConnect.send_emote("startspeaking")
+            speaking = True
 
         audio_bytes, facial_data = item
+        logging.info(f"Processing audio data of length: {len(audio_bytes)/(2*24000)} seconds")
         run_audio_animation(audio_bytes, facial_data, py_face, socket_connection, default_animation_thread)
         audio_face_queue.task_done()
 
-        # if enable_emote_calls:
-        #     EmoteConnect.send_emote("stopspeaking")
-        #     speaking = False
+        if speaking and audio_face_queue.empty() and enable_emote_calls:
+            EmoteConnect.send_emote("stopspeaking")
+            speaking = False
     
     
 def log_timing_worker(log_queue):

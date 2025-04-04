@@ -3,6 +3,7 @@
 # Businesses or organizations with **annual revenue of $1,000,000 or more** must obtain permission to use this software commercially.
 
 
+import logging
 from threading import Thread, Event, Lock
 import numpy as np
 import random
@@ -18,7 +19,7 @@ from utils.emote_sender.send_emote import EmoteConnect
 queue_lock = Lock()
 
 def run_audio_animation(audio_input, generated_facial_data, py_face, socket_connection, default_animation_thread):
-
+    logging.info(f"Processing audio and animation: {len(audio_input)/(2*24000)} seconds, {len(generated_facial_data)} facial data points")
     if (generated_facial_data is not None and 
         len(generated_facial_data) > 0 and 
         len(generated_facial_data[0]) > 61):
@@ -36,7 +37,7 @@ def run_audio_animation(audio_input, generated_facial_data, py_face, socket_conn
 
     encoding_face = initialize_py_face()
     encoded_facial_data = pre_encode_facial_data(generated_facial_data, encoding_face)
-
+    logging.info(f"Encoded facial data: {len(encoded_facial_data)} points")
     with queue_lock:
         stop_default_animation.set()
         if default_animation_thread and default_animation_thread.is_alive():
@@ -55,10 +56,10 @@ def run_audio_animation(audio_input, generated_facial_data, py_face, socket_conn
     data_thread.start()
 
     start_event.set()
-    EmoteConnect.send_emote("startspeaking")
+    # EmoteConnect.send_emote("startspeaking")
     audio_thread.join()
     data_thread.join()
-    EmoteConnect.send_emote("stopspeaking")
+    # EmoteConnect.send_emote("stopspeaking")
 
     with queue_lock:
         stop_default_animation.clear()
