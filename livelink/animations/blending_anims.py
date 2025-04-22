@@ -4,18 +4,96 @@
 
 # blending_anims.py
 
-
 import time
 import numpy as np
+from typing import List, Set
 
 from livelink.animations.default_animation import FaceBlendShape
+default_animation_state = { 'current_index': 0 }
+
+# These indices will get fast blend durations
+FAST_BLENDSHAPES = {
+    FaceBlendShape.JawOpen.value,
+    FaceBlendShape.MouthClose.value
+}
+def generate_blend_frames(
+    facial_data: List[np.ndarray],
+    total_frames: int,
+    default_animation_data: List[np.ndarray],
+    fps: int,
+    only_indices: Set[int],
+    mode: str = 'in',
+    active_duration_sec: float = None,
+    default_start_index: int = None  # CHANGED: accept start index override
+) -> List[np.ndarray]:
+    """
+    Generate a list of blended frames for given indices only.
+    active_duration_sec limits actual blending duration; the rest is pass-through.
+    If default_start_index is not provided, uses the current playing index from state (for blend-in) or 0 (for blend-out).
+    """
+    blended = []
+
+    # determine number of active frames for blending
+    if active_duration_sec is None:
+        active_frames = total_frames
+    else:
+        active_frames = int(active_duration_sec * fps)
+
+    # determine starting index for default animation
+    if default_start_index is None:
+        if mode == 'in':
+            default_start_index = default_animation_state['current_index']
+        else:
+            default_start_index = 0   # CHANGED: restart default animation for blend-out
+
+    for frame_index in range(total_frames):
+        # compute blending weight
+        if frame_index < active_frames:
+            weight = (frame_index / active_frames) if mode == 'in' else 1.0 - (frame_index / active_frames)
+        else:
+            weight = 1.0 if mode == 'in' else 0.0
+
+        # determine target frame_data for blending
+        if mode == 'in':
+            frame_data = facial_data[frame_index]
+        else:
+            frame_data = facial_data[-total_frames + frame_index]
+
+        # compute correct base index, wrapping if needed
+        idx = (default_start_index + frame_index) % len(default_animation_data)
+        if mode == 'in':
+            base = np.array(default_animation_data[idx][:51])
+        else:
+            base = np.copy(frame_data)
+
+        blended_frame = np.copy(base)
+        # perform per-index blending
+        for i in only_indices:
+            default_val = default_animation_data[idx][i]
+            target_val = frame_data[i]
+            blended_val = (1 - weight) * default_val + weight * target_val
+            blended_frame[i] = blended_val
+
+        blended.append(blended_frame)
+
+    return blended
+
+def combine_frame_streams(base_frames: List[np.ndarray], overlay_frames: List[np.ndarray], override_indices: set) -> List[np.ndarray]:
+    """
+    Merges two frame lists by applying `overlay_frames` values only at `override_indices`.
+    """
+    combined = []
+    for base, overlay in zip(base_frames, overlay_frames):
+        combined_frame = np.copy(base)
+        for i in override_indices:
+            combined_frame[i] = overlay[i]
+        combined.append(combined_frame)
+    return combined
 
 
-def play_full_animation(facial_data, fps, py_face, socket_connection, blend_in_frames, blend_out_frames):
-    for blend_shape_data in facial_data[blend_in_frames:-blend_out_frames]:
-        apply_blendshapes(blend_shape_data, 1.0, py_face)
-        socket_connection.sendall(py_face.encode())
-        time.sleep(1 / fps)
+
+
+
 
 def apply_blendshapes(frame_data: np.ndarray, weight: float, py_face, default_animation_data):
     for i in range(51):  # Apply the first 51 blendshapes (no neck at the moment)
@@ -24,19 +102,11 @@ def apply_blendshapes(frame_data: np.ndarray, weight: float, py_face, default_an
         blended_value = (1 - weight) * default_value + weight * facial_value
         py_face.set_blendshape(FaceBlendShape(i), float(blended_value))
 
-def blend_in(facial_data, fps, py_face, encoded_data, blend_in_frames, default_animation_data):
-    for frame_index in range(blend_in_frames):
-        weight = frame_index / blend_in_frames
-        apply_blendshapes(facial_data[frame_index], weight, py_face, default_animation_data)
-        encoded_data.append(py_face.encode())
-        time.sleep(1 / fps)
 
-def blend_out(facial_data, fps, py_face, encoded_data, blend_out_frames, default_animation_data):
-    for frame_index in range(blend_out_frames):
-        weight = frame_index / blend_out_frames
-        reverse_index = len(facial_data) - blend_out_frames + frame_index
-        apply_blendshapes(facial_data[reverse_index], 1.0 - weight, py_face, default_animation_data)
-        encoded_data.append(py_face.encode())
+def play_full_animation(facial_data, fps, py_face, socket_connection, blend_in_frames, blend_out_frames):
+    for blend_shape_data in facial_data[blend_in_frames:-blend_out_frames]:
+        apply_blendshapes(blend_shape_data, 1.0, py_face)
+        socket_connection.sendall(py_face.encode())
         time.sleep(1 / fps)
 
 def blend_animation_start_end(data, blend_frames=16):
